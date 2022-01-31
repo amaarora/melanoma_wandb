@@ -17,6 +17,7 @@ from pathlib import Path
 import torch.nn as nn
 from sklearn.metrics import roc_auc_score
 import random 
+import transformers
 from wandb_utils import log_wandb_table, log_oof_wandb
 import logging
 logging.getLogger().setLevel(logging.INFO)
@@ -26,8 +27,9 @@ del_now = datetime.now(tz)
 
 
 
-def train_one_epoch(args, train_loader, model, optimizer, weights=None):
-    if args.loss.startswith('weighted'): weights = weights.to(args.device)
+def train_one_epoch(args, train_loader, model, optimizer, weights=None, scheduler=None):
+    if args.loss.startswith('weighted'): 
+        weights = weights.to(args.device)
     losses = AverageMeter()
     model.train()
     if args.accumulation_steps > 1: 
@@ -40,14 +42,15 @@ def train_one_epoch(args, train_loader, model, optimizer, weights=None):
         if args.accumulation_steps == 1 and b_idx == 0:
             optimizer.zero_grad()
         _, loss = model(**data, args=args, weights=weights)
-
         with torch.set_grad_enabled(True):
             loss.backward()
             if (b_idx + 1) % args.accumulation_steps == 0:
                 optimizer.step()
                 optimizer.zero_grad()
+        if scheduler is not None: scheduler.step()
         losses.update(loss.item(), train_loader.batch_size)
         tk0.set_postfix(loss=losses.avg)
+
     return losses.avg
         
 
@@ -71,8 +74,6 @@ def evaluate(args, valid_loader, model):
 
 
 def run(fold, args):
-    run = wandb.init(config=args, project="melanoma")
-
     if args.sz: 
         logging.info(f"Images will be resized to {args.sz}")
         args.sz = int(args.sz)
@@ -125,7 +126,7 @@ def run(fold, args):
     ])
 
     valid_aug = albumentations.Compose([
-        albumentations.CenterCrop(args.sz, args.sz) if args.sz else albumentations.NoOp(),
+        albumentations.CenterCrop(args.valid_sz, args.valid_sz) if args.valid_sz else albumentations.NoOp(),
         albumentations.Normalize(always_apply=True),
     ])
 
@@ -151,10 +152,20 @@ def run(fold, args):
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.train_batch_size, shuffle=True, num_workers=4)
     valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=args.valid_batch_size, shuffle=False, num_workers=4)
 
+
+    n_batch = len(train_loader)
+    n_train_steps = n_batch * args.epochs
+
     # create optimizer and scheduler for training 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(
-        optimizer, milestones=[3,5,6,7,8,9,10,11,13,15], gamma=0.5)
+
+    # scheduler = torch.optim.lr_scheduler.MultiStepLR(
+    #     optimizer, milestones=[3,5,6,7,8,9,10,11,13,15], gamma=0.5)
+    scheduler = transformers.get_cosine_schedule_with_warmup(
+        optimizer, num_warmup_steps=250, num_training_steps=n_train_steps
+    )
+
+
 
     es = EarlyStopping(
         total_epochs=args.epochs, 
@@ -163,7 +174,7 @@ def run(fold, args):
         save_mode=args.save_mode)
 
     for epoch in range(args.epochs):
-        train_loss = train_one_epoch(args, train_loader, model, optimizer, weights=None if not args.loss.startswith('weighted') else class_weights)
+        train_loss = train_one_epoch(args, train_loader, model, optimizer, weights=None if not args.loss.startswith('weighted') else class_weights, scheduler=scheduler)
         preds, valid_loss = evaluate(args, valid_loader, model)
         predictions = np.vstack(preds).ravel()
         auc = metrics.roc_auc_score(valid_targets, predictions)
@@ -191,9 +202,9 @@ def run(fold, args):
         wandb.run.log({
             'train_loss': train_loss, 
             'valid_loss': valid_loss, 
-            'auc_score': auc, 
-            'learning_rate': lr}
-            )
+            'auc_score': auc,
+            'learning_rate': lr
+            })
         if es.early_stop: break
 
     return preds_df
@@ -238,11 +249,12 @@ def main():
     parser.add_argument('--save_mode', default='all', help="Whether to save only the best model or all models to W&B")
     parser.add_argument('--pretrained', default=None, type=str, help="Set to 'imagenet' to load pretrained weights.")
     parser.add_argument('--train_batch_size', default=64, type=int, help="Training batch size.")
+    parser.add_argument('--valid_sz', default=224, type=int, help="Validation Image size.")
     parser.add_argument('--valid_batch_size', default=32, type=int, help="Validation batch size.")
     parser.add_argument('--learning_rate', default=1e-4, type=float, help="Learning rate.")
     parser.add_argument('--epochs', default=3, type=int, help="Num epochs.")
     parser.add_argument('--accumulation_steps', default=1, type=int, help="Gradient accumulation steps.")
-    parser.add_argument('--sz', default=None, type=int, help="The size to which RandomCrop and CenterCrop images.")
+    parser.add_argument('--sz', default=224, type=int, help="The size to which RandomCrop and CenterCrop images.")
     parser.add_argument('--loss', default='weighted_focal_loss', help="loss fn to train")
     parser.add_argument('--cc', default=False, action='store_true', help="Whether to use color constancy or not.")
     parser.add_argument('--arch_name', default='efficientnet-b0', help="EfficientNet architecture to use for training.")
@@ -250,25 +262,31 @@ def main():
     parser.add_argument('--tta', default=False, action='store_true')
     parser.add_argument('--freeze_cnn', default=False, action='store_true')
     parser.add_argument('--model_path', default=None)
-
-
+    parser.add_argument('--sweep', default=None, action='store_true')
     args = parser.parse_args()
+
+    wandb.init(config=args, project="melanoma")
+    args = wandb.config
+
     # if args.sz, then logging.info message and convert to int
     kfolds = list(map(int, args.kfold.split(',')))
-    if len(kfolds)>1:
-        oof_df = pd.DataFrame()
-        for fold in kfolds:
-            logging.info(f'\n\n {"-"*50} \n\n')
-            preds_df = run(fold, args)
-            oof_df = pd.concat([oof_df, preds_df])
-    else: 
-        oof_df = run(kfolds[0], args)
-    
-    # log oof df to W&B 
-    logging.info("Logging OOF data to W&B..")
-    oof_table = wandb.Table(dataframe=oof_df)
-    wandb.run.log({'OOF Preds': oof_table})
-    logging.info(f'\n\n OOF AUC: {roc_auc_score(oof_df.target, oof_df.prediction)}')
+    if not args.sweep:            
+        if len(kfolds)>1:
+            oof_df = pd.DataFrame()
+            for fold in kfolds:
+                logging.info(f'\n\n {"-"*50} \n\n')
+                preds_df = run(fold, args)
+                oof_df = pd.concat([oof_df, preds_df])
+        else: 
+            oof_df = run(kfolds[0], args)
+        
+        # log oof df to W&B 
+        logging.info("Logging OOF data to W&B..")
+        oof_table = wandb.Table(dataframe=oof_df)
+        wandb.run.log({'OOF Preds': oof_table})
+        logging.info(f'\n\n OOF AUC: {roc_auc_score(oof_df.target, oof_df.prediction)}')
+
+
 
 
 if __name__=='__main__':
