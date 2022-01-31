@@ -10,6 +10,28 @@ from PIL import Image
 from collections import defaultdict
 
 
+class FeatureExtractor(nn.Module):
+    def __init__(self, model, layer_names):
+        super().__init__()
+        self.model = model
+        self.layer_names = layer_names
+        self._features = defaultdict(list)
+        
+        layer_dict = dict([*self.model.named_modules()])
+        for layer_name in layer_names:
+            layer = layer_dict[layer_name]
+            layer.register_forward_hook(self.save_outputs_hook(layer_name))
+
+    def save_outputs_hook(self, layer_name):
+        def fn(_, __, output): 
+            self._features[layer_name] = output
+        return fn
+
+    def forward(self, **kwargs):
+        _ = self.model(**kwargs)
+        return self._features
+
+
 def log_wandb_table(data_dir, df, table_name, n_sample=100):
     wandb_table = wandb.Table(columns=['Image Name', 'Image', 'Target', 'Diagnosis', 'Sex'])
     sample_df   = df.sample(n=n_sample).reset_index(drop=True).copy()
@@ -38,29 +60,7 @@ def log_oof_wandb(oof_df, frac=1.):
     wandb.run.log({'Predictions': wandb_table})
 
 
-class FeatureExtractor(nn.Module):
-    def __init__(self, model, layer_names):
-        super().__init__()
-        self.model = model
-        self.layer_names = layer_names
-        self._features = defaultdict(list)
-        
-        layer_dict = dict([*self.model.named_modules()])
-        for layer_name in layer_names:
-            layer = layer_dict[layer_name]
-            layer.register_forward_hook(self.save_outputs_hook(layer_name))
-
-    def save_outputs_hook(self, layer_name):
-        def fn(_, __, output): 
-            self._features[layer_name] = output
-        return fn
-
-    def forward(self, **kwargs):
-        _ = self.model(**kwargs)
-        return self._features
-
-
-def log_features_to_wandb(epoch, model, valid_loader, args, layer_name='base_model._dropout'):
+def log_features_to_wandb(epoch, model, valid_loader, args, layer_name='base_model._fc.3'):
     model.eval()
     fx = FeatureExtractor(model, [layer_name])
     features=[]; labels=[]

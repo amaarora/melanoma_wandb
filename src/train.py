@@ -169,7 +169,7 @@ def run(fold, args):
 
     es = EarlyStopping(
         total_epochs=args.epochs, 
-        patience=3, 
+        patience=5, 
         mode='min' if args.metric=='valid_loss' else 'max',
         save_mode=args.save_mode)
 
