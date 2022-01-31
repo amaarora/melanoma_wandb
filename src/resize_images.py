@@ -12,7 +12,8 @@ import argparse
 from fastai.vision.all import *
 from color_constancy import color_constancy
 import albumentations
-
+import logging
+logging.getLogger().setLevel(logging.INFO)
 
 def pad_and_resize(path, output_path, sz: tuple):
     fn = os.path.basename(path)  

@@ -18,7 +18,7 @@ import torch.nn as nn
 from sklearn.metrics import roc_auc_score
 import random 
 import transformers
-from wandb_utils import log_wandb_table, log_oof_wandb
+from wandb_utils import log_wandb_table, log_features_to_wandb
 import logging
 logging.getLogger().setLevel(logging.INFO)
 
@@ -174,6 +174,10 @@ def run(fold, args):
         save_mode=args.save_mode)
 
     for epoch in range(args.epochs):
+        # W&B embedding projector 
+        if epoch%2==0:
+            log_features_to_wandb(epoch, model, valid_loader, args)
+
         train_loss = train_one_epoch(args, train_loader, model, optimizer, weights=None if not args.loss.startswith('weighted') else class_weights, scheduler=scheduler)
         preds, valid_loss = evaluate(args, valid_loader, model)
         predictions = np.vstack(preds).ravel()
@@ -205,6 +209,8 @@ def run(fold, args):
             'auc_score': auc,
             'learning_rate': lr
             })
+        
+        
         if es.early_stop: break
 
     return preds_df
