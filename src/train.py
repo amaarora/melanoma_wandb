@@ -17,11 +17,12 @@ from pathlib import Path
 import torch.nn as nn
 from sklearn.metrics import roc_auc_score
 import random 
+from wandb_utils import log_wandb_table, log_oof_wandb
 import logging
 logging.getLogger().setLevel(logging.INFO)
 
-tz = pytz.timezone('Australia/Sydney')
-syd_now = datetime.now(tz)
+tz = pytz.timezone('Asia/Calcutta')
+del_now = datetime.now(tz)
 
 
 
@@ -81,6 +82,12 @@ def run(fold, args):
     df_train = df.query(f"kfold != {fold}").reset_index(drop=True)
     df_valid = df.query(f"kfold == {fold}").reset_index(drop=True)
     logging.info(f"Running for K-Fold {fold}; train_df: {df_train.shape}, valid_df: {df_valid.shape}")
+
+    # log wandb tables 
+    logging.info(f"Logging train and validation tables to W&B..")
+    
+    log_wandb_table(args.train_data_dir, df_train, "Train Data", n_sample=100)
+    log_wandb_table(args.train_data_dir, df_valid, "Valid Data", n_sample=100)
 
     # calculate weights for NN loss
     weights = len(df)/df.target.value_counts().values 
@@ -149,37 +156,47 @@ def run(fold, args):
     scheduler = torch.optim.lr_scheduler.MultiStepLR(
         optimizer, milestones=[3,5,6,7,8,9,10,11,13,15], gamma=0.5)
 
-    es = EarlyStopping(patience=3, mode='min' if args.metric=='valid_loss' else 'max')
+    es = EarlyStopping(
+        total_epochs=args.epochs, 
+        patience=3, 
+        mode='min' if args.metric=='valid_loss' else 'max',
+        save_mode=args.save_mode)
 
     for epoch in range(args.epochs):
         train_loss = train_one_epoch(args, train_loader, model, optimizer, weights=None if not args.loss.startswith('weighted') else class_weights)
         preds, valid_loss = evaluate(args, valid_loader, model)
         predictions = np.vstack(preds).ravel()
         auc = metrics.roc_auc_score(valid_targets, predictions)
-        preds_df = pd.DataFrame({'predictions': predictions, 'targets': valid_targets, 'valid_image_paths': valid_image_paths})
-        logging.info(f"Epoch: {epoch}, Train loss: {train_loss}, Valid loss: {valid_loss}, Valid Score: {locals()[f'{args.metric}']}")
+        preds_df = pd.DataFrame(
+            {'prediction': predictions, 
+            'target': valid_targets, 
+            'image_path': valid_image_paths
+            })
+        logging.info(
+            f"Epoch: {epoch}, Train loss: {train_loss}, Valid loss: {valid_loss}, Valid Score: {locals()[f'{args.metric}']}")
 
         scheduler.step()
         for param_group in optimizer.param_groups: 
             lr = param_group['lr']
             logging.info(f"Current Learning Rate: {param_group['lr']}")
         es(
-            locals()[f"{args.metric}"], model, 
-            model_path=f"/home/arora/git_repos/melanoma_wandb/data/models/{syd_now.strftime(r'%d%m%y')}/{args.arch_name}_fold_{fold}_{args.sz}_{locals()[f'{args.metric}']}.bin",
-            preds_df=preds_df, 
-            df_path=f"/home/arora/git_repos/melanoma_wandb/data/valid_preds/{syd_now.strftime(r'%d%m%y')}/{args.arch_name}_fold_{fold}_{args.sz}_{locals()[f'{args.metric}']}.bin",
-            args=args
+            epoch=epoch+1,
+            epoch_score=locals()[f"{args.metric}"], 
+            model=model, 
+            model_path=f"/home/arora/git_repos/melanoma_wandb/data/usr/models/{del_now.strftime(r'%d%m%y')}/{args.arch_name}_fold_{fold}_{args.sz}_{locals()[f'{args.metric}']}.bin",
             )
         
-        run.log({
+        wandb.define_metric("valid_loss", summary="min")
+        wandb.define_metric("auc_score", summary="max")
+        wandb.run.log({
             'train_loss': train_loss, 
             'valid_loss': valid_loss, 
             'auc_score': auc, 
             'learning_rate': lr}
             )
-        
-        if es.early_stop:
-            return preds_df
+        if es.early_stop: break
+
+    return preds_df
 
 
 def main():
@@ -218,6 +235,7 @@ def main():
     )
     #Other parameters
     parser.add_argument('--metric', default='auc', help="Metric to use for early stopping and scheduler.")
+    parser.add_argument('--save_mode', default='all', help="Whether to save only the best model or all models to W&B")
     parser.add_argument('--pretrained', default=None, type=str, help="Set to 'imagenet' to load pretrained weights.")
     parser.add_argument('--train_batch_size', default=64, type=int, help="Training batch size.")
     parser.add_argument('--valid_batch_size', default=32, type=int, help="Validation batch size.")
@@ -245,11 +263,12 @@ def main():
             oof_df = pd.concat([oof_df, preds_df])
     else: 
         oof_df = run(kfolds[0], args)
-
-    oof_df.to_csv(f"/home/ubuntu/repos/kaggle/melonama/models/{syd_now.strftime(r'%d%m%y')}/{args.model_name}_{args.sz}_oof.csv", index=False)
-    logging.info(f"oof_df saved to /home/ubuntu/repos/kaggle/melonama/models/{syd_now.strftime(r'%d%m%y')}/{args.model_name}_{args.sz}_oof.csv")
-
-    logging.info(f'\n\n OOF AUC: {roc_auc_score(oof_df.targets, oof_df.predictions)}')
+    
+    # log oof df to W&B 
+    logging.info("Logging OOF data to W&B..")
+    oof_table = wandb.Table(dataframe=oof_df)
+    wandb.run.log({'OOF Preds': oof_table})
+    logging.info(f'\n\n OOF AUC: {roc_auc_score(oof_df.target, oof_df.prediction)}')
 
 
 if __name__=='__main__':

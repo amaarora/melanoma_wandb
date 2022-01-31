@@ -14,7 +14,7 @@ if __name__ == '__main__':
     df['kfold'] = -1
 
     # shuffle
-    df = df.sample(frac=.3).reset_index(drop=True)
+    df = df.sample(frac=0.3).reset_index(drop=True)
     targets = df.target.values
     for fold, (train_index, test_index) in enumerate(kf.split(X=df[['image_name']], y=targets)):
         df.loc[test_index, 'kfold'] = fold
