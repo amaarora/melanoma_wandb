@@ -14,7 +14,6 @@ from datetime import date, datetime
 import pytz
 from pathlib import Path
 import torch.nn as nn
-from utils import scale_and_map_df, modify_model
 from sklearn.metrics import roc_auc_score
 import random 
 
@@ -164,9 +163,9 @@ def run(fold, args):
         for param_group in optimizer.param_groups: print(f"Current Learning Rate: {param_group['lr']}")
         es(
             locals()[f"{args.metric}"], model, 
-            model_path=f"/home/arora/git_repos/melonama/data/models/{syd_now.strftime(r'%d%m%y')}/{args.arch_name}_fold_{fold}_{args.sz}_{locals()[f'{args.metric}']}.bin",
+            model_path=f"/home/arora/git_repos/melanoma_wandb/data/models/{syd_now.strftime(r'%d%m%y')}/{args.arch_name}_fold_{fold}_{args.sz}_{locals()[f'{args.metric}']}.bin",
             preds_df=preds_df, 
-            df_path=f"/home/arora/git_repos/melonama/data/valid_preds/{syd_now.strftime(r'%d%m%y')}/{args.arch_name}_fold_{fold}_{args.sz}_{locals()[f'{args.metric}']}.bin",
+            df_path=f"/home/arora/git_repos/melanoma_wandb/data/valid_preds/{syd_now.strftime(r'%d%m%y')}/{args.arch_name}_fold_{fold}_{args.sz}_{locals()[f'{args.metric}']}.bin",
             args=args
             )
         if es.early_stop:
