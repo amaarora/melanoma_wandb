@@ -2,7 +2,8 @@ import torch
 import numpy as np
 from pathlib import Path
 import os
-
+import logging
+logging.getLogger().setLevel(logging.INFO)
 
 class EarlyStopping:
     # credits: https://github.com/Bjarten/early-stopping-pytorch
@@ -29,7 +30,7 @@ class EarlyStopping:
             self.save_checkpoint(epoch_score, model, model_path)
         elif score < self.best_score + self.delta:
             self.counter += 1
-            print(
+            logging.info(
                 "EarlyStopping counter: {} out of {}".format(
                     self.counter, self.patience
                 )
@@ -48,7 +49,7 @@ class EarlyStopping:
         parent = model_path.parent
         os.makedirs(parent, exist_ok=True)
         if epoch_score not in [-np.inf, np.inf, -np.nan, np.nan]:
-            print(
+            logging.info(
                 "Validation score improved ({} --> {}). Model saved at at {}!".format(
                     self.val_score, epoch_score, model_path
                 )
@@ -61,7 +62,7 @@ class EarlyStopping:
         parent = df_path.parent
         os.makedirs(parent, exist_ok=True)
         preds_df.to_csv(df_path, index=False)
-        print(
+        logging.info(
                 "Validation score improved ({} --> {}). Validation predictions saved at at {}!".format(
                     self.val_score, epoch_score, df_path
                 )

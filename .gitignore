@@ -4,3 +4,4 @@ notebooks/
 *.pyc
 /home/ubuntu/repos/kaggle/melonama/isic2019/
 valid_preds/
+src/wandb/

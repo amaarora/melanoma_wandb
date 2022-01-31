@@ -86,26 +86,26 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     if args.sz: 
-        print("Images will be resized to {}".format(args.sz))
+        logging.info("Images will be resized to {}".format(args.sz))
         args.sz= int(args.sz)
 
     images = glob.glob(os.path.join(args.input_folder, '*.jpg'))
     if (not args.mantain_aspect_ratio) and args.pad_resize:
-        print("Adding padding to images if needed and resizing images to square of side {}px.".format(args.sz))
+        logging.info("Adding padding to images if needed and resizing images to square of side {}px.".format(args.sz))
         Parallel(n_jobs=16)(
             delayed(pad_and_resize)(i, args.output_folder, (args.sz, args.sz)) for i in tqdm(images))
     elif args.resize_and_save:
-        print("Resizing and saving images to size {}".format(args.sz))
+        logging.info("Resizing and saving images to size {}".format(args.sz))
         Parallel(n_jobs=32)(
             delayed(resize_and_save)(i, args.output_folder, (args.sz, args.sz), args.cc) for i in tqdm(images))
     elif args.centercrop:
-        print("Will crop min(h,w) center and resize.")
+        logging.info("Will crop min(h,w) center and resize.")
         Parallel(n_jobs=32)(
             delayed(resize_min_wh)(i, args.output_folder) for i in tqdm(images))
     else:
-        print("Resizing images to mantain aspect ratio in a way that the shorter side is {}px but images are rectangular.".format(args.sz))
+        logging.info("Resizing images to mantain aspect ratio in a way that the shorter side is {}px but images are rectangular.".format(args.sz))
         if not os.path.exists(args.output_folder):
             os.makedirs(args.output_folder)
-        print(args)
+        logging.info(args)
         Parallel(n_jobs=32)(
             delayed(resize_and_mantain)(i, args.output_folder, (args.sz, args.sz), args) for i in tqdm(images))

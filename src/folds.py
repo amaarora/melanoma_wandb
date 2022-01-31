@@ -5,7 +5,7 @@ import numpy as np
 
 
 FRAC    = 0.3
-DATADIR = "/home/arora/git_repos/melonama/data"
+DATADIR = "/home/arora/git_repos/melanoma_wandb/data"
 
 
 if __name__ == '__main__':
@@ -14,7 +14,7 @@ if __name__ == '__main__':
     df['kfold'] = -1
 
     # shuffle
-    df = df.sample(frac=0.3).reset_index(drop=True)
+    df = df.sample(frac=.3).reset_index(drop=True)
     targets = df.target.values
     for fold, (train_index, test_index) in enumerate(kf.split(X=df[['image_name']], y=targets)):
         df.loc[test_index, 'kfold'] = fold

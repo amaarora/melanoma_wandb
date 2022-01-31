@@ -1,0 +1,3 @@
+```python 
+python train.py --model_name efficient_net --arch_name efficientnet-b0 --device cuda --metric 'auc' --training_folds_csv /home/arora/git_repos/melanoma_wandb/data/train_folds.csv --train_data_dir /home/arora/git_repos/melanoma_wandb/data/usr/resized_train_256_cc --kfold 0 --pretrained imagenet --train_batch_size 64 --valid_batch_size 64 --learning_rate  5e-4 --epochs 10 --sz 224 --loss 'weighted_focal_loss'
+```
