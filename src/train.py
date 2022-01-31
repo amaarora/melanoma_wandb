@@ -174,10 +174,6 @@ def run(fold, args):
         save_mode=args.save_mode)
 
     for epoch in range(args.epochs):
-        # W&B embedding projector 
-        if epoch%2==0:
-            log_features_to_wandb(epoch, model, valid_loader, args)
-
         train_loss = train_one_epoch(args, train_loader, model, optimizer, weights=None if not args.loss.startswith('weighted') else class_weights, scheduler=scheduler)
         preds, valid_loss = evaluate(args, valid_loader, model)
         predictions = np.vstack(preds).ravel()
@@ -210,9 +206,11 @@ def run(fold, args):
             'learning_rate': lr
             })
         
-        
+        if epoch%10==0 and epoch!=0:
+            log_features_to_wandb(epoch, model, valid_loader, args)
+            
         if es.early_stop: break
-
+    
     return preds_df
 
 

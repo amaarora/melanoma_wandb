@@ -61,7 +61,6 @@ class FeatureExtractor(nn.Module):
 
 
 def log_features_to_wandb(epoch, model, valid_loader, args, layer_name='base_model._dropout'):
-    import pdb; pdb.set_trace()
     model.eval()
     fx = FeatureExtractor(model, [layer_name])
     features=[]; labels=[]
