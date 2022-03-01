@@ -17,6 +17,10 @@ To download the dataset, we can use the Kaggle API. Please run the following lin
 
 ```kaggle competitions download -c siim-isic-melanoma-classification```
 
+## Create folds 
+Once you've downloaded the datase, we will create training and validation folds. Run the following line of code to do that: 
+```python folds.py```
+
 ## Data Preprocessing 
 For a detailed explanation on data preprocessing - please refer to the report [How to prepare the dataset for the Melanoma Classification?](https://wandb.ai/amanarora/melanoma/reports/How-to-prepare-the-dataset-for-the-Melanoma-Classification---VmlldzoxNjI4NTkz). 
 
@@ -33,3 +37,12 @@ Please run the following line of code to kick-off model training. (Note that you
 ```python 
 python train.py --model_name efficient_net --arch_name efficientnet-b0 --device cuda --metric 'auc' --training_folds_csv /home/arora/git_repos/melanoma_wandb/data/train_folds.csv --train_data_dir /home/arora/git_repos/melanoma_wandb/data/usr/resized_train_256_cc --kfold 0 --pretrained imagenet --train_batch_size 64 --valid_batch_size 64 --learning_rate  5e-4 --epochs 10 --sz 224 --loss 'weighted_focal_loss'
 ```
+
+## Kick off Hyperparameter Sweep 
+To kick off hyperparameter sweep: 
+1. Go to the W&B project page that's created when you first kick off training. 
+2. Go to W&B Sweeps.
+3. Go to "Create Sweep"
+4. Define sweep parameters and click on "Initialize Sweep"
+
+That should create a nice looking sweep dashboard with all hyperparameter values and validation metric scores as in the example dashboard here - [W&B Melanoma Sweep](https://wandb.ai/amanarora/melanoma/sweeps/r4v597ps?workspace=).
